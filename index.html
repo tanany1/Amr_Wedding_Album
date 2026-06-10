@@ -124,15 +124,54 @@
       margin-left: auto;
       margin-right: auto;
     }
-
-    .gallery-img {
+    
+    .gallery-item {
+      position: relative;
       width: 100%;
       aspect-ratio: 1;
-      object-fit: cover;
       border-radius: 8px;
+      overflow: hidden;
       border: 1px solid rgba(82,59,37,.2);
       box-shadow: 0 4px 10px rgba(0,0,0,0.05);
       animation: fadeIn 0.5s ease forwards;
+    }
+
+    .gallery-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .upload-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(239, 236, 228, 0.85); /* Matches your var(--bg-color) */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--crimson);
+      font-family: 'Montserrat', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 600;
+      z-index: 2;
+      transition: opacity 0.5s ease;
+    }
+
+    .spinner {
+      border: 3px solid rgba(82,59,37,.2);
+      border-top: 3px solid var(--crimson);
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+      margin-bottom: 8px;
+    }
+
+    @keyframes spin { 
+      0% { transform: rotate(0deg); } 
+      100% { transform: rotate(360deg); } 
     }
 
     @keyframes fadeIn {
@@ -182,12 +221,12 @@
 
   <script>
     // --- CONFIGURATION ---
-    // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL HERE
     const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz625DjFWJ5uGBvFsLq1EQVmpgQpQ9lMZGAdAsJcqIPyjFCBJm9n5ONCW7COuytdpKPtg/exec'; 
     const MAX_IMAGES = 10;
-    
-    // --- STATE ---
-    let imageCount = 0;
+
+    // Retrieve previous data from mobile storage
+    let imageCount = parseInt(localStorage.getItem('amr_ayten_image_count')) || 0;
+    let savedThumbnails = JSON.parse(localStorage.getItem('amr_ayten_thumbnails')) || [];
     let useFrontCamera = false;
     let currentStream = null;
 
@@ -203,6 +242,14 @@
     const statusText = document.getElementById('status');
     const countDisplay = document.getElementById('count-display');
     const limitMsg = document.getElementById('limit-msg');
+
+    // Run immediately to check structural configuration limits
+    updateUI();
+
+    // Render historical thumbnails saved from previous actions
+    savedThumbnails.forEach(src => {
+      addToGallery(src, true);
+    });
 
     // --- CAMERA INITIALIZATION ---
     async function startCamera() {
@@ -227,7 +274,10 @@
       }
     }
 
-    startCamera();
+    // Only start camera if they haven't reached the limit yet
+    if (imageCount < MAX_IMAGES) {
+      startCamera();
+    }
 
     // Switch Camera Front/Back
     switchCamBtn.addEventListener('click', () => {
@@ -264,35 +314,94 @@
     // --- PROCESS & UPLOAD ---
     function processImage(base64Data) {
       imageCount++;
+      localStorage.setItem('amr_ayten_image_count', imageCount); 
       updateUI();
-      addToGallery(base64Data);
-      uploadToDrive(base64Data);
+      
+      // Live photo rendering gets an active loading overlay
+      const overlayElement = addToGallery(base64Data, false);
+      
+      // Process and save a lightweight thumbnail clone securely to storage
+      saveThumbnailToStorage(base64Data);
+      
+      // Send the beautiful full-res copy straight to Google Drive
+      uploadToDrive(base64Data, overlayElement);
     }
 
-    function addToGallery(src) {
+    function addToGallery(src, isHistorical = false) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'gallery-item';
+
       const img = document.createElement('img');
       img.src = src;
-      img.className = 'gallery-img';
-      gallery.prepend(img); // Adds newest image to the top left
+      wrapper.appendChild(img);
+
+      if (!isHistorical) {
+        // Create the active loading UI for live actions
+        const overlay = document.createElement('div');
+        overlay.className = 'upload-overlay';
+        overlay.innerHTML = `
+          <div class="spinner"></div>
+          <span>Uploading...</span>
+        `;
+        wrapper.appendChild(overlay);
+        gallery.prepend(wrapper); 
+        return overlay; 
+      } else {
+        // If it's loaded from storage cache, bypass overlay requirements
+        gallery.prepend(wrapper);
+      }
+    }
+
+    function saveThumbnailToStorage(base64Data) {
+      const img = new Image();
+      img.onload = function() {
+        const maxDim = 300; // Optimal thumbnail target size
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > height) {
+          if (width > maxDim) {
+            height *= maxDim / width;
+            width = maxDim;
+          }
+        } else {
+          if (height > maxDim) {
+            width *= maxDim / height;
+            height = maxDim;
+          }
+        }
+        
+        const thumbCanvas = document.createElement('canvas');
+        thumbCanvas.width = width;
+        thumbCanvas.height = height;
+        const thumbCtx = thumbCanvas.getContext('2d');
+        thumbCtx.drawImage(img, 0, 0, width, height);
+        
+        // Convert to optimized low-footprint JPEGs
+        const thumbBase64 = thumbCanvas.toDataURL('image/jpeg', 0.7);
+        
+        savedThumbnails.push(thumbBase64);
+        localStorage.setItem('amr_ayten_thumbnails', JSON.stringify(savedThumbnails));
+      };
+      img.src = base64Data;
     }
 
     function updateUI() {
       countDisplay.innerText = imageCount;
       
       if (imageCount >= MAX_IMAGES) {
-        controls.style.display = 'none'; // Hide capture/upload buttons
-        document.getElementById('camera-container').style.display = 'none'; // Optional: hide camera feed
+        controls.style.display = 'none'; 
+        document.getElementById('camera-container').style.display = 'none'; 
         limitMsg.style.display = 'block';
         statusText.style.display = 'none';
         
-        // Stop camera to save battery
         if (currentStream) {
           currentStream.getTracks().forEach(track => track.stop());
         }
       }
     }
 
-    function uploadToDrive(base64Data) {
+    function uploadToDrive(base64Data, overlay) {
       fetch(APPS_SCRIPT_URL, {
         method: 'POST',
         body: JSON.stringify({
@@ -303,9 +412,14 @@
       .then(response => response.json())
       .then(data => {
         console.log("Upload successful", data);
+        overlay.innerHTML = '<span>✔️ Saved</span>';
+        setTimeout(() => {
+            overlay.style.opacity = '0';
+        }, 1500);
       })
       .catch(error => {
         console.error("Upload failed", error);
+        overlay.innerHTML = '<span style="color: darkred;">❌ Failed</span>';
       });
     }
   </script>
