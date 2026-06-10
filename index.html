@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Amr & Ayten | Wedding Album</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=EB+Garamond:ital,wght@0,400;1,400&family=Pinyon+Script&family=Cinzel:wght@400;600&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-color:      #EFECE4;
+      --crimson:       #523B25; 
+      --crimson-dark:  #3b2a1a; 
+      --gold:          #c9a84c;
+      --text:          #523B25; 
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: var(--bg-color);
+      color: var(--text);
+      text-align: center;
+      padding: 20px;
+      overflow-x: hidden;
+    }
+
+    h1 {
+      font-family: 'Pinyon Script', cursive;
+      font-size: 3rem;
+      color: var(--crimson);
+      margin-bottom: 5px;
+    }
+
+    p.subtitle {
+      font-family: 'Cinzel', serif;
+      font-size: 0.9rem;
+      margin-bottom: 20px;
+      letter-spacing: 1px;
+    }
+
+    #camera-container {
+      position: relative;
+      width: 100%;
+      max-width: 400px;
+      margin: 0 auto;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 25px rgba(0,0,0,.1);
+      border: 2px solid rgba(82,59,37,.4);
+    }
+
+    video {
+      width: 100%;
+      display: block;
+      background: #000;
+    }
+
+    /* Hide the canvas, it's only used to grab the frame */
+    #canvas { display: none; }
+
+    #controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .theme-btn {
+      background: var(--crimson);
+      color: #EFECE4;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 30px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 6px 15px rgba(82,59,37,.3);
+      transition: transform .3s, background .3s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .theme-btn:hover {
+      background: var(--crimson-dark);
+      transform: translateY(-2px);
+    }
+
+    .secondary-btn {
+      background: transparent;
+      color: var(--crimson);
+      border: 1px solid var(--crimson);
+    }
+    
+    .secondary-btn:hover {
+      background: rgba(82,59,37,0.1);
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    #status {
+      margin-top: 15px;
+      font-family: 'EB Garamond', serif;
+      font-style: italic;
+      font-size: 1.1rem;
+    }
+
+    #gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 10px;
+      margin-top: 30px;
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .gallery-img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid rgba(82,59,37,.2);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+      animation: fadeIn 0.5s ease forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.9); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .limit-reached {
+      color: var(--gold);
+      font-family: 'Cinzel', serif;
+      font-size: 1.2rem;
+      font-weight: bold;
+      margin-top: 20px;
+      display: none;
+    }
+
+  </style>
+</head>
+<body>
+
+  <h1>Amr & Ayten</h1>
+  <p class="subtitle">Help us capture the magic</p>
+
+  <div id="camera-container">
+    <video id="video" autoplay playsinline></video>
+  </div>
+  <canvas id="canvas"></canvas>
+
+  <div id="controls">
+    <button class="theme-btn" id="capture-btn">
+      📷 Capture
+    </button>
+    <button class="theme-btn secondary-btn" id="switch-cam-btn">
+      🔄 Flip Cam
+    </button>
+    
+    <label class="theme-btn secondary-btn" style="cursor: pointer;">
+      📁 Upload
+      <input type="file" id="file-upload" accept="image/*">
+    </label>
+  </div>
+
+  <p id="status">Images captured: <span id="count-display">0</span> / 10</p>
+  <p id="limit-msg" class="limit-reached">Thank you! Your 10 memories are saved.</p>
+
+  <div id="gallery"></div>
+
+  <script>
+    // --- CONFIGURATION ---
+    // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL HERE
+    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz625DjFWJ5uGBvFsLq1EQVmpgQpQ9lMZGAdAsJcqIPyjFCBJm9n5ONCW7COuytdpKPtg/exec'; 
+    const MAX_IMAGES = 10;
+    
+    // --- STATE ---
+    let imageCount = 0;
+    let useFrontCamera = false;
+    let currentStream = null;
+
+    // --- DOM ELEMENTS ---
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const captureBtn = document.getElementById('capture-btn');
+    const switchCamBtn = document.getElementById('switch-cam-btn');
+    const fileUpload = document.getElementById('file-upload');
+    const controls = document.getElementById('controls');
+    const gallery = document.getElementById('gallery');
+    const statusText = document.getElementById('status');
+    const countDisplay = document.getElementById('count-display');
+    const limitMsg = document.getElementById('limit-msg');
+
+    // --- CAMERA INITIALIZATION ---
+    async function startCamera() {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+      
+      const constraints = {
+        video: {
+          facingMode: useFrontCamera ? "user" : "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
+
+      try {
+        currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = currentStream;
+      } catch (err) {
+        console.error("Error accessing camera: ", err);
+        statusText.innerText = "Camera access denied or unavailable.";
+      }
+    }
+
+    startCamera();
+
+    // Switch Camera Front/Back
+    switchCamBtn.addEventListener('click', () => {
+      useFrontCamera = !useFrontCamera;
+      startCamera();
+    });
+
+    // --- HANDLE CAPTURE ---
+    captureBtn.addEventListener('click', () => {
+      if (imageCount >= MAX_IMAGES) return;
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      const imageData = canvas.toDataURL('image/png');
+      processImage(imageData);
+    });
+
+    // --- HANDLE FILE UPLOAD ---
+    fileUpload.addEventListener('change', (e) => {
+      if (imageCount >= MAX_IMAGES || !e.target.files[0]) return;
+
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      
+      reader.onload = function(event) {
+        processImage(event.target.result);
+      };
+      
+      reader.readAsDataURL(file);
+    });
+
+    // --- PROCESS & UPLOAD ---
+    function processImage(base64Data) {
+      imageCount++;
+      updateUI();
+      addToGallery(base64Data);
+      uploadToDrive(base64Data);
+    }
+
+    function addToGallery(src) {
+      const img = document.createElement('img');
+      img.src = src;
+      img.className = 'gallery-img';
+      gallery.prepend(img); // Adds newest image to the top left
+    }
+
+    function updateUI() {
+      countDisplay.innerText = imageCount;
+      
+      if (imageCount >= MAX_IMAGES) {
+        controls.style.display = 'none'; // Hide capture/upload buttons
+        document.getElementById('camera-container').style.display = 'none'; // Optional: hide camera feed
+        limitMsg.style.display = 'block';
+        statusText.style.display = 'none';
+        
+        // Stop camera to save battery
+        if (currentStream) {
+          currentStream.getTracks().forEach(track => track.stop());
+        }
+      }
+    }
+
+    function uploadToDrive(base64Data) {
+      fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          image: base64Data,
+          filename: `Amr_Ayten_${Date.now()}.png`
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log("Upload successful", data);
+      })
+      .catch(error => {
+        console.error("Upload failed", error);
+      });
+    }
+  </script>
+</body>
+</html>
