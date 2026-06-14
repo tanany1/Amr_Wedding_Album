@@ -28,6 +28,10 @@
       overflow-x: hidden;
     }
 
+    video.mirrored-preview {
+      transform: scaleX(-1);
+    }
+
     h1 {
       font-family: 'Pinyon Script', cursive;
       font-size: 3rem;
@@ -282,17 +286,34 @@
     // Switch Camera Front/Back
     switchCamBtn.addEventListener('click', () => {
       useFrontCamera = !useFrontCamera;
+      
+      // Toggle the mirrored CSS class for the live preview
+      if (useFrontCamera) {
+        video.classList.add('mirrored-preview');
+      } else {
+        video.classList.remove('mirrored-preview');
+      }
+      
       startCamera();
     });
 
-    // --- HANDLE CAPTURE ---
     captureBtn.addEventListener('click', () => {
       if (imageCount >= MAX_IMAGES) return;
 
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
+
+      // Flip the context horizontally if the front camera is active
+      if (useFrontCamera) {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+      }
+
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       
+      // Reset the transformation matrix so it doesn't break back-camera captures
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+
       const imageData = canvas.toDataURL('image/png');
       processImage(imageData);
     });
